@@ -1,4 +1,4 @@
-# Audio Compression
+# Visualizing Human Perception in Audio Compression
 
 This project is an interactive visualization tool designed to demonstrate the principles of **Lossy Audio Compression** (like MP3). It utilizes **Psychoacoustic Models** to identify and remove frequencies that are "invisible" to the human ear, effectively reducing data size while maintaining perceived audio quality.
 
@@ -22,16 +22,29 @@ This project is an interactive visualization tool designed to demonstrate the pr
 │   └── audio_engine.py    # Signal processing logic (STFT/ISTFT, Filtering)
 ├── requirements.txt       # Project dependencies
 └── README.md              # Project documentation
+```
 
 ## Installation & Setup
-git clone <your-repository-url>
+### 1.Clone the Repository
+```
+git clone https://github.com/Dam595/MultimediaCompression.git
 cd <project-folder>
-
+```
+### 2.Create a Virtual Environment
+```
 python3 -m venv multimedia_env
-
+```
+### 3.Activate the Environment
+```
 source multimedia_env/bin/activate
-
+```
+### 4.Install Dependencies
+```
 pip install --upgrade pip
 pip install -r requirements.txt
-
+```
+## How to Run
+Launch the application using Streamlit:
+```
 streamlit run app.py
+```

@@ -1,5 +1,6 @@
 import numpy as np
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks as scipy_signal_find_peaks
+import librosa
 
 def freq_to_bark(f):
     """Convert Frequency (Hz) to Bark scale."""
@@ -12,24 +13,21 @@ def ath_threshold(f):
     ath = 3.64 * (f_khz**-3.9) - 6.5 * np.exp(-0.6 * (f_khz - 3.3)**2) + 10**-3 * (f_khz**4)
     return ath - 90
 
-def compute_masking_threshold(magnitudes, freqs, threshold_offset, librosa_db_func):
-    """Calculate the Global Masking Threshold for a single frame."""
+def compute_masking_threshold(magnitudes, freqs, threshold_offset):
+    """Calculate the Global Masking Threshold for a single STFT frame."""
     ath = ath_threshold(freqs)
     masking_curve = np.full_like(magnitudes, -100.0)
     bark_freqs = freq_to_bark(freqs)
     
-    # Use the passed librosa function to convert magnitude to dB
-    mag_db = librosa_db_func(magnitudes, ref=np.max)
-    
-    # Identify tonals (peaks)
-    peaks, _ = find_peaks(mag_db, height=-60)
+    mag_db = librosa.amplitude_to_db(magnitudes, ref=np.max)
+    peaks, _ = scipy_signal_find_peaks(mag_db, height=-60)
     
     for p in peaks:
         target_bark = bark_freqs[p]
         target_mag = mag_db[p]
         delta_bark = bark_freqs - target_bark
         
-        # Spreading function
+        # Spreading function: simultaneous masking effect
         spread = np.where(delta_bark < 0, 27 * delta_bark, -10 * delta_bark)
         masking_curve = np.maximum(masking_curve, target_mag + spread - 7)
 
