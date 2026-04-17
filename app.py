@@ -2,101 +2,62 @@ import streamlit as st
 import librosa
 import numpy as np
 import plotly.graph_objects as go
-import soundfile as sf
-from scipy.fftpack import fft
-from scipy.signal import find_peaks as scipy_signal_find_peaks
+import pandas as pd
+from src.audio_engine import process_compression, calculate_snr
 
-st.set_page_config(layout="wide")
-st.title("Visualizing Human Perception in Audio Compression")
+st.set_page_config(page_title="Audio Perception Lab", layout="wide")
+st.title("🎧 Visualizing Human Perception in Audio Compression")
 
-def freq_to_bark(f):
-    return 13 * np.arctan(0.00076 * f) + 3.5 * np.arctan((f / 7500)**2)
-
-def ath_threshold(f):
-    f = np.maximum(f, 0.01) 
-    f_khz = f / 1000
-    ath = 3.64 * (f_khz**-3.9) - 6.5 * np.exp(-0.6 * (f_khz - 3.3)**2) + 10**-3 * (f_khz**4)
-    return ath - 90
-
-def compute_masking_threshold(magnitudes, freqs, threshold_offset):
-    ath = ath_threshold(freqs)
-    masking_curve = np.full_like(magnitudes, -100.0)
-    bark_freqs = freq_to_bark(freqs)
-    
-    mag_db = librosa.amplitude_to_db(magnitudes, ref=np.max)
-    
-    peaks, _ = scipy_signal_find_peaks(mag_db, height=-60)
-    
-    for p in peaks:
-        target_bark = bark_freqs[p]
-        target_mag = mag_db[p]
-        delta_bark = bark_freqs - target_bark
-        spread = np.where(delta_bark < 0, 27 * delta_bark, -10 * delta_bark)
-        masking_curve = np.maximum(masking_curve, target_mag + spread - 7)
-
-    global_threshold_db = np.maximum(ath, masking_curve) + threshold_offset
-    return np.clip(global_threshold_db, -100, 0)
-
-uploaded_file = st.file_uploader("Chọn file âm thanh (.wav)", type=["wav"])
+uploaded_file = st.file_uploader("📂 Upload .wav file", type=["wav"])
 
 if uploaded_file is not None:
+    # 1. Load and Normalize
     y, sr = librosa.load(uploaded_file, duration=10)
     y = librosa.util.normalize(y)
     
-    st.sidebar.header("Cài đặt thuật toán")
-    n_fft = st.sidebar.select_slider("Window Size (n_fft)", options=[512, 1024, 2048, 4096], value=2048)
-    threshold_offset = st.sidebar.slider("Tăng/Giảm ngưỡng nhạy (dB)", -40, 40, 0)
+    # 2. Sidebar Settings
+    st.sidebar.header("⚙️ Algorithm Settings")
+    n_fft = st.sidebar.select_slider("Window Size (n_fft)", [512, 1024, 2048, 4096], 2048)
+    threshold_offset = st.sidebar.slider("Masking Sensitivity (dB)", -40, 40, 0)
 
-    D = librosa.stft(y, n_fft=n_fft)
-    D_mag, D_phase = librosa.magphase(D)
-    S_db = librosa.amplitude_to_db(D_mag, ref=np.max)
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    # 3. Processing
+    with st.spinner('🔄 Processing signal...'):
+        y_comp, y_rem, S_db, g_mask, mask, freqs = process_compression(
+            y, sr, n_fft, threshold_offset
+        )
 
-    with st.spinner('Đang tính toán mô hình tâm lý âm học...'):
-        global_mask_db = np.zeros_like(S_db)
-        for i in range(S_db.shape[1]):
-            global_mask_db[:, i] = compute_masking_threshold(D_mag[:, i], freqs, threshold_offset)
-
-    mask = S_db > global_mask_db
-    D_processed = D.copy()
-    D_processed[~mask] = 0
-
-    y_compressed = librosa.istft(D_processed)
-    y_removed = librosa.istft(D * (~mask))
-
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🔊 File Gốc")
-        st.audio(uploaded_file)
-        fig_orig = go.Figure(data=go.Heatmap(z=S_db, colorscale='Viridis', zmin=-80, zmax=0))
-        fig_orig.update_layout(title="Spectrogram Gốc", xaxis_title="Time", yaxis_title="Frequency")
-        st.plotly_chart(fig_orig, use_container_width=True)
-
-    with col2:
-        st.subheader("🔇 File Sau Khi Nén")
-        st.audio(y_compressed, sample_rate=sr)
-        S_db_processed = librosa.amplitude_to_db(np.abs(D_processed), ref=np.max)
-        fig_proc = go.Figure(data=go.Heatmap(z=S_db_processed, colorscale='Viridis', zmin=-80, zmax=0))
-        fig_proc.update_layout(title="Spectrogram Đã Nén", xaxis_title="Time", yaxis_title="Frequency")
-        st.plotly_chart(fig_proc, use_container_width=True)
-
-    st.divider()
-    
-    st.subheader("📊 Phân tích hiệu quả nén")
-    total_elements = mask.size
-    removed_elements = np.sum(~mask)
-    compression_ratio = (removed_elements / total_elements) * 100
-    
+    # 4. Audio Players
     c1, c2 = st.columns(2)
-    c1.metric("Tần số bị loại bỏ", f"{removed_elements}", f"{compression_ratio:.2f}% data")
-    c2.write("### Nghe phần âm thanh bị loại bỏ:")
-    c2.audio(y_removed, sample_rate=sr)
+    c1.write("### Original Audio")
+    c1.audio(y, sample_rate=sr)
+    c2.write("### Compressed Audio")
+    c2.audio(y_comp, sample_rate=sr)
 
-    st.subheader("🔍 Chi tiết mô hình che lấp (Frame trung tâm)")
-    middle_frame = int(min(S_db.shape[1] // 2, S_db.shape[1] - 1))
+    # 5. Spectrograms
+    st.divider()
+    st.subheader("📊 Spectrogram Comparison")
+    col3, col4 = st.columns(2)
+    
+    for col, data, title in zip([col3, col4], [S_db, librosa.amplitude_to_db(np.abs(y_comp), ref=np.max)], ["Original", "Compressed"]):
+        fig = go.Figure(data=go.Heatmap(z=data, colorscale='Viridis', zmin=-80, zmax=0))
+        fig.update_layout(title=title)
+        col.plotly_chart(fig, use_container_width=True)
+
+    # 6. Evaluation Metrics
+    st.divider()
+    m1, m2, m3 = st.columns(3)
+    comp_ratio = (np.sum(~mask) / mask.size) * 100
+    m1.metric("Removed Data", f"{comp_ratio:.2f}%")
+    m2.metric("SNR (dB)", f"{calculate_snr(y, y_comp):.2f}")
+    m3.write("🎧 Residual Sound (Removed)")
+    m3.audio(y_rem, sample_rate=sr)
+
+    # 7. Masking Detail
+    st.divider()
+    st.subheader("🔍 Masking Model (Middle Frame)")
+    mid = S_db.shape[1] // 2
     fig_line = go.Figure()
-    fig_line.add_trace(go.Scatter(x=freqs, y=S_db[:, middle_frame], name="Phổ tín hiệu"))
-    fig_line.add_trace(go.Scatter(x=freqs, y=global_mask_db[:, middle_frame], name="Ngưỡng che lấp toàn cục", line=dict(dash='dash', color='red')))
-    fig_line.update_layout(xaxis_type="log", xaxis_title="Tần số (Hz)", yaxis_title="Biên độ (dB)", yaxis_range=[-100, 5])
+    fig_line.add_trace(go.Scatter(x=freqs, y=S_db[:, mid], name="Signal"))
+    fig_line.add_trace(go.Scatter(x=freqs, y=g_mask[:, mid], name="Threshold", line=dict(dash='dash', color='red')))
+    fig_line.update_layout(xaxis_type="log", xaxis_title="Freq (Hz)", yaxis_title="dB", yaxis_range=[-100, 5])
     st.plotly_chart(fig_line, use_container_width=True)
