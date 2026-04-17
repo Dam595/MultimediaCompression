@@ -15,7 +15,7 @@ if uploaded_file is not None:
     st.success("✅ File uploaded successfully!")
 
     # Load & Normalize
-    y, sr = librosa.load(uploaded_file, duration=10)
+    y, sr = librosa.load(uploaded_file, duration=20)
     y = librosa.util.normalize(y)
     
     # Sidebar
