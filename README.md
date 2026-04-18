@@ -28,7 +28,7 @@ This project is an interactive visualization tool designed to demonstrate the pr
 ### 1.Clone the Repository
 ```
 git clone https://github.com/Dam595/MultimediaCompression.git
-cd <project-folder>
+cd MultimediaCompression
 ```
 ### 2.Create a Virtual Environment
 ```
