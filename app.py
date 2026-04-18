@@ -21,7 +21,7 @@ if uploaded_file is not None:
     # Sidebar
     st.sidebar.header("⚙️ Algorithm Settings")
     n_fft = st.sidebar.select_slider("Window Size (n_fft)", options=[512, 1024, 2048, 4096], value=2048)
-    threshold_offset = st.sidebar.slider("Masking Sensitivity (dB)", -40, 40, 0)
+    threshold_offset = st.sidebar.slider("Masking Sensitivity (dB)", -60, 40, 0)
     st.sidebar.caption("Dam The Anh 202414607, Le Cong Hai Quan 202414659")
 
     with st.spinner('🔄 Processing signal...'):
