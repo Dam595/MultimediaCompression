@@ -16,6 +16,8 @@ This project is an interactive visualization tool designed to demonstrate the pr
 ```Project 1
 .
 ├── app.py                 # Main Streamlit UI application
+├── dataset                # Audio data for testing
+├── Checklist              # Checklist item 5, 6, 7, 9 for the project
 ├── src/
 │   ├── __init__.py        # Package initializer
 │   ├── psychoacoustics.py # Mathematical formulas (ATH, Bark, Masking)
