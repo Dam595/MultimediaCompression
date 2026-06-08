@@ -73,7 +73,125 @@ if uploaded_file is not None:
     fig_line.update_layout(xaxis_type="log", xaxis_title="Frequency (Hz)", yaxis_title="Amplitude (dB)", yaxis_range=[-100, 5], title="Masking Curve Analysis")
     st.plotly_chart(fig_line, use_container_width=True)
 
-    # --- 5. Evaluation & Analysis Loop ---
+    # --- 5. Critical Bands Visualization ---
+    st.divider()
+    st.subheader("🎼 Critical Bands (Bark Scale)")
+    st.caption("The 24 critical bands represent the ear's frequency resolution. Each band is one 'Bark' unit wide — sounds within the same band mask each other strongly.")
+
+    # Define the 24 critical band boundaries in Hz (standard Zwicker values)
+    critical_band_edges_hz = [
+        20, 100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480,
+        1720, 2000, 2320, 2700, 3150, 3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500
+    ]
+
+    # --- 5a. Masking Curve with Critical Band Overlay ---
+    fig_cb = go.Figure()
+
+    # Add critical band shaded regions (alternating for visibility)
+    for i in range(len(critical_band_edges_hz) - 1):
+        f_low = critical_band_edges_hz[i]
+        f_high = critical_band_edges_hz[i + 1]
+        fill_color = "rgba(100, 180, 255, 0.06)" if i % 2 == 0 else "rgba(100, 180, 255, 0.13)"
+        fig_cb.add_vrect(
+            x0=f_low, x1=f_high,
+            fillcolor=fill_color,
+            line_width=0.5,
+            line_color="rgba(100,180,255,0.3)",
+            annotation_text=str(i + 1),
+            annotation_position="top left",
+            annotation_font_size=9,
+            annotation_font_color="rgba(150,200,255,0.7)"
+        )
+
+    # Signal and masking threshold traces
+    fig_cb.add_trace(go.Scatter(
+        x=freqs, y=S_db[:, middle_frame],
+        name="Signal", line=dict(color='#5BC8F5', width=1.2)
+    ))
+    fig_cb.add_trace(go.Scatter(
+        x=freqs, y=global_mask_db[:, middle_frame],
+        name="Masking Threshold", line=dict(dash='dash', color='red', width=1.5)
+    ))
+
+    fig_cb.update_layout(
+        title="Masking Curve with 24 Critical Bands Overlay",
+        xaxis_title="Frequency (Hz)",
+        xaxis_type="log",
+        xaxis=dict(range=[np.log10(20), np.log10(15500)]),
+        yaxis_title="Amplitude (dB)",
+        yaxis_range=[-100, 5],
+        legend=dict(x=0.01, y=0.01),
+        height=420
+    )
+    st.plotly_chart(fig_cb, use_container_width=True)
+
+    # --- 5b. Energy per Critical Band bar chart ---
+    st.markdown("**Energy per Critical Band** — how much signal energy falls in each of the 24 bands")
+
+    band_energies = []
+    band_masked_ratios = []
+    band_labels = []
+
+    for i in range(len(critical_band_edges_hz) - 1):
+        f_low = critical_band_edges_hz[i]
+        f_high = critical_band_edges_hz[i + 1]
+        band_mask = (freqs >= f_low) & (freqs < f_high)
+        if np.sum(band_mask) == 0:
+            band_energies.append(-100)
+            band_masked_ratios.append(0)
+        else:
+            energy = np.mean(S_db[band_mask, middle_frame])
+            threshold_energy = np.mean(global_mask_db[band_mask, middle_frame])
+            masked_ratio = np.mean(S_db[band_mask, middle_frame] < global_mask_db[band_mask, middle_frame]) * 100
+            band_energies.append(float(energy))
+            band_masked_ratios.append(float(masked_ratio))
+        band_labels.append(f"CB{i+1}<br>{f_low}–{f_high}Hz")
+
+    fig_energy = go.Figure()
+    fig_energy.add_trace(go.Bar(
+        x=list(range(1, 25)),
+        y=band_energies,
+        name="Signal Energy (dB)",
+        marker_color=[
+            f"rgba(91,200,245,{0.4 + 0.6*(1 - r/100)})" for r in band_masked_ratios
+        ],
+        hovertemplate="Band %{x}<br>Energy: %{y:.1f} dB<extra></extra>"
+    ))
+    fig_energy.add_trace(go.Bar(
+        x=list(range(1, 25)),
+        y=band_masked_ratios,
+        name="% Masked",
+        marker_color="rgba(220,90,80,0.6)",
+        yaxis="y2",
+        hovertemplate="Band %{x}<br>Masked: %{y:.1f}%<extra></extra>"
+    ))
+    fig_energy.update_layout(
+        xaxis_title="Critical Band number",
+        yaxis_title="Avg energy (dB)",
+        yaxis2=dict(title="% bins masked", overlaying="y", side="right", range=[0, 100]),
+        barmode="overlay",
+        height=340,
+        legend=dict(x=0.01, y=0.99),
+        xaxis=dict(tickmode="linear", tick0=1, dtick=1)
+    )
+    st.plotly_chart(fig_energy, use_container_width=True)
+
+    # --- 5c. Bark scale mapping info ---
+    with st.expander("ℹ️ What is the Bark scale?"):
+        st.markdown("""
+        The **Bark scale** maps Hz to perceptual units used by the human auditory system.
+        
+        - 1 Bark ≈ 1 critical band width
+        - Below ~500 Hz: bands are ~100 Hz wide (ear is very precise here)  
+        - Above 500 Hz: bands grow wider with frequency (ear becomes less precise)
+        - 24 Bark units cover the full audible range (20 Hz – ~15.5 kHz)
+        
+        Masking calculations in this project use Bark distance rather than Hz distance, 
+        which is why the spreading function (`15 dB/Bark` downward, `10 dB/Bark` upward) 
+        feels natural to human listeners.
+        """)
+
+    # --- 6. Evaluation & Analysis Loop ---
     st.divider()
     st.header("📊 Evaluation & Analysis")
     
